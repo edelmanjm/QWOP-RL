@@ -1,12 +1,14 @@
 import time
+from typing import Dict, Tuple, Any
 
-import gym
+import gymnasium
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 from pynput.keyboard import Controller
 from pynput.keyboard import Key
 from selenium import webdriver
-from stable_baselines.common.env_checker import check_env
+from selenium.webdriver.common.by import By
+from stable_baselines3.common.env_checker import check_env
 
 PORT = 8000
 PRESS_DURATION = 0.1
@@ -27,7 +29,7 @@ ACTIONS = {
 }
 
 
-class QWOPEnv(gym.Env):
+class QWOPEnv(gymnasium.Env):
 
     meta_data = {'render.modes': ['human']}
     pressed_keys = set()
@@ -56,7 +58,7 @@ class QWOPEnv(gym.Env):
 
         # Wait a bit and then start game
         time.sleep(2)
-        self.driver.find_element_by_xpath("//body").click()
+        self.driver.find_element(By.XPATH, "//body").click()
 
         self.keyboard = Controller()
         self.last_press_time = time.time()
@@ -144,7 +146,7 @@ class QWOPEnv(gym.Env):
             state = state + list(part.values())
         state = np.array(state)
 
-        return state, reward, done, {}
+        return state, reward, self.gameover, False, {}
 
     def _release_all_keys_(self):
 
@@ -167,7 +169,7 @@ class QWOPEnv(gym.Env):
         # self.last_press_time = time.time()
         time.sleep(PRESS_DURATION)
 
-    def reset(self):
+    def reset(self, **kwargs):
 
         # Send 'R' key press to restart game
         self.send_keys(['r', Key.space])
@@ -178,7 +180,8 @@ class QWOPEnv(gym.Env):
         self.previous_torso_y = 0
         self._release_all_keys_()
 
-        return self._get_state_()[0]
+        observation, _, _, _, info = self._get_state_()
+        return observation, info
 
     def step(self, action_id):
 

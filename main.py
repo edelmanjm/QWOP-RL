@@ -1,28 +1,29 @@
 import os
+import stable_baselines3.common.type_aliases
 import time
 
 import click
-from stable_baselines import DQN
-from stable_baselines.common.callbacks import CheckpointCallback
-from stable_baselines.deepq.policies import FeedForwardPolicy
+from stable_baselines3 import DQN
+from sb3_contrib import SACD
+from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.type_aliases import TrainFreq, TrainFrequencyUnit
+from stable_baselines3.dqn import MlpPolicy
+import torch
 
 from game.env import ACTIONS
 from game.env import QWOPEnv
 from pretrain import imitation_learning
 from pretrain import recorder
 
-# from agents.DQNfD import DQN
-
-
 # Training parameters
-MODEL_NAME = 'FastDQN_2hr'
+MODEL_NAME = 'new_test'
 EXPLORATION_FRACTION = 0.3
 LEARNING_STARTS = 3000
 EXPLORATION_INITIAL_EPS = 0.01
 EXPLORATION_FINAL_EPS = 0.001
 BUFFER_SIZE = 300000
 BATCH_SIZE = 64
-TRAIN_FREQ = 4
+TRAIN_FREQ = TrainFreq(frequency=4, unit=TrainFrequencyUnit.STEP)
 LEARNING_RATE = 0.0001
 TRAIN_TIME_STEPS = 600000
 MODEL_PATH = os.path.join('models', MODEL_NAME)
@@ -40,36 +41,48 @@ N_EPOCHS = 500
 PRETRAIN_LEARNING_RATE = 0.00001  # 0.0001
 
 
-class CustomDQNPolicy(FeedForwardPolicy):
+class CustomDQNPolicy(MlpPolicy):
     def __init__(self, *args, **kwargs):
         super(CustomDQNPolicy, self).__init__(
             *args,
             **kwargs,
-            layers=[256, 128],
-            layer_norm=True,
-            feature_extraction="mlp",
+            net_arch=[256, 128],
+            normalize_images=True,
         )
 
 
-def get_new_model():
+def get_new_model(fine_tune=False):
+    if not fine_tune:
+        # Define policy network
+        policy_kwargs = dict(activation_fn=torch.nn.modules.activation.ReLU, net_arch=[256, 128])
 
-    # Initialize env and model
-    env = QWOPEnv()
-    model = DQN(
-        CustomDQNPolicy,
-        env,
-        prioritized_replay=True,
-        verbose=1,
-        tensorboard_log=TENSORBOARD_PATH,
-    )
+        # Initialize env and model
+        env = QWOPEnv()
+        model = SACD(
+            'MlpPolicy',
+            env,
+            policy_kwargs=policy_kwargs,
+            verbose=1,
+            tensorboard_log=TENSORBOARD_PATH,
+        )
 
-    return model
+        return model
+    else:
+        # Initialize env and model
+        env = QWOPEnv()
+        model = DQN(
+            CustomDQNPolicy,
+            env,
+            # TODO not implemented in stables-baselines3
+            # prioritized_replay=True,
+            verbose=1,
+            tensorboard_log=TENSORBOARD_PATH,
+        )
+
+        return model
 
 
 def get_existing_model(model_path):
-
-    print('--- Training from existing model', model_path, '---')
-
     # Load model
     model = DQN.load(model_path, tensorboard_log=TENSORBOARD_PATH)
 
@@ -81,17 +94,17 @@ def get_existing_model(model_path):
 
 
 def get_model(model_path):
-
     if os.path.isfile(model_path + '.zip'):
+        print('--- Training from existing model', model_path, '---')
         model = get_existing_model(model_path)
     else:
+        print('--- Training from new model ---')
         model = get_new_model()
 
     return model
 
 
 def run_train(model_path=MODEL_PATH):
-
     model = get_model(model_path)
     model.learning_rate = LEARNING_RATE
     model.learning_starts = LEARNING_STARTS
@@ -111,11 +124,10 @@ def run_train(model_path=MODEL_PATH):
     )
     model.save(MODEL_PATH)
 
-    print(f"Trained {TRAIN_TIME_STEPS} steps in {time.time()-t} seconds.")
+    print(f"Trained {TRAIN_TIME_STEPS} steps in {time.time() - t} seconds.")
 
 
 def print_probs(model, obs):
-
     # Print action probabilities
     probs = model.action_probability(obs)
     topa = sorted(
@@ -135,7 +147,6 @@ def print_probs(model, obs):
 
 
 def run_test():
-
     # Initialize env and model
     env = QWOPEnv()
     model = DQN.load(MODEL_PATH)
@@ -151,10 +162,9 @@ def run_test():
         done = False
         obs = env.reset()
         while not done:
-
             action, _states = model.predict(obs)
             # print_probs(model, obs)
-            obs, rewards, done, info = env.step(action)
+            obs, rewards, done, truncated, info = env.step(action)
 
         print(
             "Test run complete: {:4.1f} in {:4.1f} seconds. Velocity {:2.2f}".format(

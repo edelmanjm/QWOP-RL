@@ -1,7 +1,6 @@
 import time
 
-from stable_baselines import ACER
-from stable_baselines.gail import generate_expert_traj
+# from imitation.testing.expert_trajectories import generate_expert_trajectories
 
 env = None
 model = None
@@ -16,7 +15,6 @@ MAPPING = {
     'w': 6,
     'op': 7,
     'o': 8,
-    'p': 9,
     '': 10,
 }
 
@@ -59,12 +57,12 @@ def get_existing_model(model_path):
     print('--- Training from existing model', model_path, '---')
 
     # Load model
-    model = ACER.load(model_path)
+    model = SAC.load(model_path)
 
     return model
 
 
-def acer_expert(_obs):
+def sac_expert(_obs):
     global model
     action, _states = model.predict(_obs)
     return action
@@ -75,9 +73,10 @@ def generate_obs(environment, record_path, n_episodes):
     env = environment
 
     print('Starting record...')
+    # TODO rewrite me
     # model = get_existing_model(os.path.join('models', 'Self6hr_human50_self114hr'))
     # generate_expert_traj(acer_expert, record_path, env, n_episodes=n_episodes)
-    generate_expert_traj(human_expert, record_path, env, n_episodes=n_episodes)
+    # trajectories = generate_expert_trajectories(env, n_episodes, human_expert)
     print(
         f'Recording of {n_episodes} episodes complete. Saved file to {record_path}.npz'
     )
