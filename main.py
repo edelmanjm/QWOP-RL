@@ -3,11 +3,11 @@ import stable_baselines3.common.type_aliases
 import time
 
 import click
-from stable_baselines3 import DQN
+import gymnasium as gym
+from stable_baselines3 import DQN, SAC
 from sb3_contrib import SACD
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.type_aliases import TrainFreq, TrainFrequencyUnit
-from stable_baselines3.dqn import MlpPolicy
 import torch
 
 from game.env import ACTIONS
@@ -16,7 +16,7 @@ from pretrain import imitation_learning
 from pretrain import recorder
 
 # Training parameters
-MODEL_NAME = 'new_test'
+MODEL_NAME = 'sac_test_v2'
 EXPLORATION_FRACTION = 0.3
 LEARNING_STARTS = 3000
 EXPLORATION_INITIAL_EPS = 0.01
@@ -25,7 +25,7 @@ BUFFER_SIZE = 300000
 BATCH_SIZE = 64
 TRAIN_FREQ = TrainFreq(frequency=4, unit=TrainFrequencyUnit.STEP)
 LEARNING_RATE = 0.0001
-TRAIN_TIME_STEPS = 600000
+TRAIN_TIME_STEPS = 1000000
 MODEL_PATH = os.path.join('models', MODEL_NAME)
 TENSORBOARD_PATH = './tensorboard/'
 
@@ -41,37 +41,41 @@ N_EPOCHS = 500
 PRETRAIN_LEARNING_RATE = 0.00001  # 0.0001
 
 
-class CustomDQNPolicy(MlpPolicy):
+class CustomDqnPolicy(stable_baselines3.dqn.MlpPolicy):
     def __init__(self, *args, **kwargs):
-        super(CustomDQNPolicy, self).__init__(
+        super(CustomDqnPolicy, self).__init__(
             *args,
             **kwargs,
+            activation_fn=torch.nn.modules.activation.ReLU, # Should be the same as default
             net_arch=[256, 128],
             normalize_images=True,
         )
 
 
-def get_new_model(fine_tune=False):
-    if not fine_tune:
-        # Define policy network
-        policy_kwargs = dict(activation_fn=torch.nn.modules.activation.ReLU, net_arch=[256, 128])
-
-        # Initialize env and model
-        env = QWOPEnv()
-        model = SACD(
-            'MlpPolicy',
-            env,
-            policy_kwargs=policy_kwargs,
-            verbose=1,
-            tensorboard_log=TENSORBOARD_PATH,
+class CustomSacPolicy(stable_baselines3.sac.MlpPolicy):
+    def __init__(self, *args, **kwargs):
+        super(CustomSacPolicy, self).__init__(
+            *args,
+            **kwargs,
+            activation_fn=torch.nn.modules.activation.ReLU, # Should be the same as default
+            net_arch=[256, 128],
+            normalize_images=True,
         )
 
-        return model
-    else:
+
+def get_env():
+    # env = QWOPEnv() # SubprocVecEnv([lambda: QWOPEnv()])
+    env = gym.make('Walker2d-v4')
+    return env
+
+
+def get_new_model(fine_tune=False):
+    env = get_env()
+
+    if fine_tune:
         # Initialize env and model
-        env = QWOPEnv()
         model = DQN(
-            CustomDQNPolicy,
+            CustomDqnPolicy,
             env,
             # TODO not implemented in stables-baselines3
             # prioritized_replay=True,
@@ -80,15 +84,26 @@ def get_new_model(fine_tune=False):
         )
 
         return model
+    else:
+        # Initialize env and model
+        model = SAC(
+            CustomSacPolicy,
+            env,
+            verbose=1,
+            tensorboard_log=TENSORBOARD_PATH,
+        )
+
+        return model
 
 
-def get_existing_model(model_path):
-    # Load model
-    model = DQN.load(model_path, tensorboard_log=TENSORBOARD_PATH)
+def get_existing_model(model_path, fine_tune=False):
+    if fine_tune:
+        model = DQN.load(model_path, tensorboard_log=TENSORBOARD_PATH)
+    else:
+        model = SAC.load(model_path, tensorboard_log=TENSORBOARD_PATH)
 
     # Set environment
-    env = QWOPEnv()  # SubprocVecEnv([lambda: QWOPEnv()])
-    model.set_env(env)
+    model.set_env(get_env())
 
     return model
 
@@ -146,41 +161,19 @@ def print_probs(model, obs):
     )
 
 
-def run_test():
+def run_test(fine_tune=False):
     # Initialize env and model
-    env = QWOPEnv()
-    model = DQN.load(MODEL_PATH)
+    env = get_env()
+    if fine_tune:
+        model = DQN.load(MODEL_PATH)
+    else:
+        model = SAC.load(MODEL_PATH)
 
-    input('Press Enter to start.')
-
-    time.sleep(1)
-
-    for _ in range(100):
-
-        # Run test
-        t = time.time()
-        done = False
-        obs = env.reset()
-        while not done:
-            action, _states = model.predict(obs)
-            # print_probs(model, obs)
-            obs, rewards, done, truncated, info = env.step(action)
-
-        print(
-            "Test run complete: {:4.1f} in {:4.1f} seconds. Velocity {:2.2f}".format(
-                env.previous_score,
-                time.time() - t,
-                env.previous_score / (time.time() - t),
-            )
-        )
-
-        time.sleep(1)
-
-        # Admire the finish
-        if env.previous_score >= 100:
-            time.sleep(2)
-
-    input('Press Enter to exit.')
+    obs = env.reset()[0]
+    done = False
+    while not done:
+        action, _ = model.predict(obs)
+        obs, _, done, _, _ = env.step(action)
 
 
 @click.command()

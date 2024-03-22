@@ -1,6 +1,6 @@
 numpy==1.26.4
 click==7.1.2
-gymnasium==0.29.1
+gymnasium[mujoco]~=0.29.1
 tensorflow==2.16.0rc0
 selenium==4.18.1
 pynput==1.7.6
@@ -9,3 +9,5 @@ sb3-contrib @ git+https://github.com/splatter96/stable-baselines3-contrib.git@ma
 pre-commit==2.10.1
 gym~=0.26.2
 torch~=2.2.1
+matplotlib~=3.8.3
+sb3_contrib~=2.1.0a0

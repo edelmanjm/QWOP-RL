@@ -88,29 +88,29 @@ class QWOPEnv(gymnasium.Env):
         # Reward for moving forward
         reward1 = max(torso_x - self.previous_torso_x, 0)
 
-        # # Penalize for low torso
-        # if torso_y > 0:
-        #     reward2 = -torso_y / 5
-        # else:
-        #     reward2 = 0
+        # Penalize for low torso
+        if torso_y > 0:
+            reward2 = -torso_y / 5
+        else:
+            reward2 = 0
 
-        # # Penalize for torso vertical velocity
-        # reward3 = -abs(torso_y - self.previous_torso_y) / 4
+        # Penalize for torso vertical velocity
+        reward3 = -abs(torso_y - self.previous_torso_y) / 4
 
-        # # Penalize for bending knees too much
-        # if (
-        #     body_state['joints']['leftKnee'] < -0.9
-        #     or body_state['joints']['rightKnee'] < -0.9
-        # ):
-        #     reward4 = (
-        #         min(body_state['joints']['leftKnee'], body_state['joints']['rightKnee'])
-        #         / 6
-        #     )
-        # else:
-        #     reward4 = 0
+        # Penalize for bending knees too much
+        if (
+            body_state['joints']['leftKnee'] < -0.9
+            or body_state['joints']['rightKnee'] < -0.9
+        ):
+            reward4 = (
+                min(body_state['joints']['leftKnee'], body_state['joints']['rightKnee'])
+                / 6
+            )
+        else:
+            reward4 = 0
 
         # Combine rewards
-        reward = reward1 * 2  # + reward2 + reward3 + reward4
+        reward = reward1 * 2 + reward2 + reward3 + reward4
 
         # print(
         #     'Rewards: {:3.1f}, {:3.1f}, {:3.1f}, {:3.1f}, {:3.1f}'.format(
