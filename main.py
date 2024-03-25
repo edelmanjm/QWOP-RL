@@ -6,6 +6,7 @@ import click
 import gymnasium as gym
 from stable_baselines3 import DQN, SAC
 from sb3_contrib import SACD
+from sb3_contrib.sacd.policies import SACDPolicy
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.type_aliases import TrainFreq, TrainFrequencyUnit
 import torch
@@ -16,7 +17,7 @@ from pretrain import imitation_learning
 from pretrain import recorder
 
 # Training parameters
-MODEL_NAME = 'sac_test_v2'
+MODEL_NAME = 'sacd_test_v1'
 EXPLORATION_FRACTION = 0.3
 LEARNING_STARTS = 3000
 EXPLORATION_INITIAL_EPS = 0.01
@@ -25,7 +26,7 @@ BUFFER_SIZE = 300000
 BATCH_SIZE = 64
 TRAIN_FREQ = TrainFreq(frequency=4, unit=TrainFrequencyUnit.STEP)
 LEARNING_RATE = 0.0001
-TRAIN_TIME_STEPS = 1000000
+TRAIN_TIME_STEPS = 600000
 MODEL_PATH = os.path.join('models', MODEL_NAME)
 TENSORBOARD_PATH = './tensorboard/'
 
@@ -52,7 +53,7 @@ class CustomDqnPolicy(stable_baselines3.dqn.MlpPolicy):
         )
 
 
-class CustomSacPolicy(stable_baselines3.sac.MlpPolicy):
+class CustomSacPolicy(SACDPolicy):
     def __init__(self, *args, **kwargs):
         super(CustomSacPolicy, self).__init__(
             *args,
@@ -64,8 +65,8 @@ class CustomSacPolicy(stable_baselines3.sac.MlpPolicy):
 
 
 def get_env():
-    # env = QWOPEnv() # SubprocVecEnv([lambda: QWOPEnv()])
-    env = gym.make('Walker2d-v4')
+    env = QWOPEnv() # SubprocVecEnv([lambda: QWOPEnv()])
+    # env = gym.make('Walker2d-v4')
     return env
 
 
@@ -86,7 +87,7 @@ def get_new_model(fine_tune=False):
         return model
     else:
         # Initialize env and model
-        model = SAC(
+        model = SACD(
             CustomSacPolicy,
             env,
             verbose=1,
@@ -100,7 +101,7 @@ def get_existing_model(model_path, fine_tune=False):
     if fine_tune:
         model = DQN.load(model_path, tensorboard_log=TENSORBOARD_PATH)
     else:
-        model = SAC.load(model_path, tensorboard_log=TENSORBOARD_PATH)
+        model = SACD.load(model_path, tensorboard_log=TENSORBOARD_PATH)
 
     # Set environment
     model.set_env(get_env())
@@ -167,7 +168,7 @@ def run_test(fine_tune=False):
     if fine_tune:
         model = DQN.load(MODEL_PATH)
     else:
-        model = SAC.load(MODEL_PATH)
+        model = SACD.load(MODEL_PATH)
 
     obs = env.reset()[0]
     done = False
