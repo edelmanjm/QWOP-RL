@@ -3,7 +3,6 @@ click==7.1.2
 gymnasium[mujoco]~=0.29.1
 tensorflow==2.16.0rc0
 selenium==4.18.1
-pynput==1.7.6
 stable-baselines3==2.2.1
 sb3-contrib @ git+https://github.com/splatter96/stable-baselines3-contrib.git@master
 pre-commit==2.10.1

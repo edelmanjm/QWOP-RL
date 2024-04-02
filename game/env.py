@@ -4,9 +4,8 @@ from typing import Dict, Tuple, Any
 import gymnasium
 import numpy as np
 from gymnasium import spaces
-from pynput.keyboard import Controller
-from pynput.keyboard import Key
 from selenium import webdriver
+from selenium.webdriver import Keys, ActionChains
 from selenium.webdriver.common.by import By
 from stable_baselines3.common.env_checker import check_env
 
@@ -57,10 +56,15 @@ class QWOPEnv(gymnasium.Env):
         self.driver.get(f'http://localhost:{PORT}/Athletics.html')
 
         # Wait a bit and then start game
-        time.sleep(2)
-        self.driver.find_element(By.XPATH, "//body").click()
+        self.driver.implicitly_wait(10)
+        window = self.driver.find_element(By.ID, "window1")
 
-        self.keyboard = Controller()
+        self.keyboard = ActionChains(self.driver)
+        self.keyboard.move_to_element(window)
+
+        # Click twice to get past the start screen
+        self.keyboard.click().perform()
+        self.keyboard.click().perform()
         self.last_press_time = time.time()
 
     def _get_variable_(self, var_name):
@@ -151,7 +155,7 @@ class QWOPEnv(gymnasium.Env):
     def _release_all_keys_(self):
 
         for char in self.pressed_keys:
-            self.keyboard.release(char)
+            self.keyboard.key_up(char).perform()
 
         self.pressed_keys.clear()
 
@@ -162,7 +166,7 @@ class QWOPEnv(gymnasium.Env):
 
         # Hold down current key
         for char in keys:
-            self.keyboard.press(char)
+            self.keyboard.key_down(char).perform()
             self.pressed_keys.add(char)
 
         # print('pressed for', time.time() - self.last_press_time)
@@ -172,7 +176,7 @@ class QWOPEnv(gymnasium.Env):
     def reset(self, **kwargs):
 
         # Send 'R' key press to restart game
-        self.send_keys(['r', Key.space])
+        self.send_keys(['r', Keys.SPACE])
         self.gameover = False
         self.previous_score = 0
         self.previous_time = 0
@@ -196,6 +200,7 @@ class QWOPEnv(gymnasium.Env):
         return self._get_state_()
 
     def render(self, mode='human'):
+        # TODO make human render not-headless, and non-thuman render ehadless
         pass
 
     def close(self):
