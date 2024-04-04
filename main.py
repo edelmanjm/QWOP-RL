@@ -174,7 +174,7 @@ def run_test(fine_tune=False):
     done = False
     while not done:
         action, _ = model.predict(obs)
-        obs, _, done, _, _ = env.step(action)
+        obs, _, done, _, _ = env.step(int(action))
 
 
 @click.command()
