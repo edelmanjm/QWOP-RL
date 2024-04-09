@@ -1,8 +1,9 @@
 import os
 import stable_baselines3.common.type_aliases
 import time
+from enum import Enum
 
-import click
+import typer
 import gymnasium as gym
 from stable_baselines3 import DQN, SAC
 from sb3_contrib import SACD
@@ -38,6 +39,8 @@ N_EPISODES = 10
 N_EPOCHS = 500
 PRETRAIN_LEARNING_RATE = 0.00001  # 0.0001
 
+app = typer.Typer(no_args_is_help=True)
+
 
 class CustomDqnPolicy(stable_baselines3.dqn.MlpPolicy):
     def __init__(self, *args, **kwargs):
@@ -55,7 +58,7 @@ class CustomSacPolicy(SACDPolicy):
         super(CustomSacPolicy, self).__init__(
             *args,
             **kwargs,
-            activation_fn=torch.nn.modules.activation.ReLU, # Should be the same as default
+            activation_fn=torch.nn.modules.activation.ReLU,  # Should be the same as default
             net_arch=[256, 128],
             normalize_images=True,
         )
@@ -77,35 +80,61 @@ class TensorboardCallback(BaseCallback):
         return True
 
 
-def get_env():
-    env = QWOPEnv()  # SubprocVecEnv([lambda: QWOPEnv()])
-    # env = gym.make('Walker2d-v4')
-    return env
+class EnvType(str, Enum):
+    QWOP = "qwop",
+    WALKER_2D = "walker_2d"
 
 
-def get_new_model(env, fine_tune=False):
-    if fine_tune:
-        # Initialize env and model
-        model = DQN(
-            CustomDqnPolicy,
-            env,
-            # TODO not implemented in stables-baselines3
-            # prioritized_replay=True,
-            verbose=1,
-            tensorboard_log=TENSORBOARD_PATH,
-        )
+class RenderMode(str, Enum):
+    NONE = "none",
+    HUMAN = "human"
 
-        return model
-    else:
-        # Initialize env and model
-        model = SACD(
-            CustomSacPolicy,
-            env,
-            verbose=1,
-            tensorboard_log=TENSORBOARD_PATH,
-        )
 
-        return model
+class ModelType(str, Enum):
+    DQN = "dqn",
+    SAC = "sac"
+
+
+def get_env(env_type: EnvType, render_mode: RenderMode):
+    if render_mode == "none":
+        # This is the way that OpenAI's Gym prefers it, and heterogenous enums don't seem to work well with Typer
+        render_mode = None
+
+    match env_type:
+        case EnvType.QWOP:
+            env = QWOPEnv(render_mode=render_mode)  # SubprocVecEnv([lambda: QWOPEnv()])
+        case EnvType.WALKER_2D:
+            env = gym.make('Walker2d-v4', render_mode=render_mode)
+    wrapped_env = Monitor(env, TENSORBOARD_PATH, allow_early_resets=True)
+    return wrapped_env
+
+
+def get_new_model(env, model_type: ModelType):
+    match model_type:
+        case ModelType.DQN:
+            return DQN(
+                CustomDqnPolicy,
+                env,
+                # TODO not implemented in stables-baselines3
+                # prioritized_replay=True,
+                verbose=1,
+                tensorboard_log=TENSORBOARD_PATH,
+            )
+        case ModelType.SAC:
+            if isinstance(env.action_space, gym.spaces.Discrete):
+                return SACD(
+                    CustomSacPolicy,
+                    env,
+                    verbose=1,
+                    tensorboard_log=TENSORBOARD_PATH,
+                )
+            elif isinstance(env.action_space, gym.spaces.Box):
+                return SAC(
+                    CustomSacPolicy,
+                    env,
+                    verbose=1,
+                    tensorboard_log=TENSORBOARD_PATH,
+                )
 
 
 def get_existing_model(env, model_path, fine_tune=False):
@@ -120,18 +149,25 @@ def get_existing_model(env, model_path, fine_tune=False):
     return model
 
 
-def get_model(env, model_path, fine_tune=False):
+def get_model(env, model_type: ModelType, model_path: str):
     if os.path.isfile(model_path + '.zip'):
         print('--- Training from existing model', model_path, '---')
         model = get_existing_model(env, model_path)
     else:
         print('--- Training from new model ---')
-        model = get_new_model(env, fine_tune)
+        model = get_new_model(env, model_type)
 
     return model
 
 
-def run_train(env, model_path=MODEL_PATH, fine_tune=False):
+@app.command()
+def train(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN,
+          model_type: ModelType = ModelType.DQN, model_path: str = MODEL_PATH, fine_tune=False):
+    """
+    Run training; will train from existing model if path exists.
+    """
+    env = get_env(env_type, render_mode)
+
     callbacks = [
         CheckpointCallback(
             save_freq=1000, save_path='./logs/', name_prefix=MODEL_NAME
@@ -139,7 +175,7 @@ def run_train(env, model_path=MODEL_PATH, fine_tune=False):
         EvalCallback(env, eval_freq=100)
     ]
 
-    model = get_model(env, model_path, fine_tune)
+    model = get_model(env, model_type, model_path)
     model.learning_rate = LEARNING_RATE
     model.learning_starts = LEARNING_STARTS
     model.exploration_initial_eps = EXPLORATION_INITIAL_EPS
@@ -180,7 +216,14 @@ def print_probs(model, obs):
     )
 
 
-def run_test(env, fine_tune=False):
+@app.command()
+def test(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN, fine_tune=False):
+    """
+    Test the model.
+    """
+
+    env = get_env(env_type, render_mode)
+
     # Initialize model
     if fine_tune:
         model = DQN.load(MODEL_PATH)
@@ -194,50 +237,27 @@ def run_test(env, fine_tune=False):
         obs, _, done, _, _ = env.step(int(action))
 
 
-@click.command()
-@click.option(
-    '--train',
-    default=False,
-    is_flag=True,
-    help='Run training; will train from existing model if path exists',
-)
-@click.option('--test', default=False, is_flag=True, help='Run test')
-@click.option(
-    '--record',
-    default=False,
-    is_flag=True,
-    help='Record observations for pretraining',
-)
-@click.option(
-    '--imitate',
-    default=False,
-    is_flag=True,
-    help='Train agent from recordings; will use existing model if path exists',
-)
-def main(train, test, record, imitate):
-    """Train and test an agent for QWOP."""
+@app.command()
+def record(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN):
+    """
+    Record observations for pretraining
+    """
+    env = get_env(env_type, render_mode)
+    recorder.generate_obs(env, RECORD_PATH, N_EPISODES)
 
-    env = QWOPEnv()
-    wrapped_env = Monitor(env, TENSORBOARD_PATH, allow_early_resets=True)
 
-    if train:
-        run_train(wrapped_env, fine_tune=True)
-    if test:
-        run_test(env, fine_tune=True)
-
-    if record:
-        recorder.generate_obs(env, RECORD_PATH, N_EPISODES)
-
-    if imitate:
-        model = get_model(MODEL_PATH)
-        imitation_learning.imitate(
-            model, RECORD_PATH, MODEL_PATH, PRETRAIN_LEARNING_RATE, N_EPOCHS
-        )
-
-    if not (test or train or record or imitate):
-        with click.Context(main) as ctx:
-            click.echo(main.get_help(ctx))
+@app.command()
+def imitate(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN,
+            model_type: ModelType = ModelType.DQN):
+    """
+    Train agent from recordings; will use existing model if path exists
+    """
+    env = get_env(env_type, render_mode)
+    model = get_model(env, model_type, MODEL_PATH)
+    imitation_learning.imitate(
+        model, RECORD_PATH, MODEL_PATH, PRETRAIN_LEARNING_RATE, N_EPOCHS
+    )
 
 
 if __name__ == '__main__':
-    main()
+    app()

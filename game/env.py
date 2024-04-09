@@ -34,8 +34,7 @@ class QWOPEnv(gymnasium.Env):
     meta_data = {'render.modes': ['human']}
     pressed_keys = set()
 
-    def __init__(self):
-
+    def __init__(self, render_mode='human'):
         # Open AI gym specifications
         super(QWOPEnv, self).__init__()
         self.action_space = spaces.Discrete(len(ACTIONS))
@@ -54,7 +53,8 @@ class QWOPEnv(gymnasium.Env):
 
         # Open browser and go to QWOP page
         options = Options()
-        options.add_argument('--headless=new')
+        if render_mode is None:
+            options.add_argument('--headless=new')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         self.driver = webdriver.Chrome(options=options)
@@ -205,8 +205,13 @@ class QWOPEnv(gymnasium.Env):
         return self._get_state_()
 
     def render(self, mode='human'):
-        # TODO make human render not-headless, and non-thuman render ehadless
-        pass
+        # Unfortunately Selenium cannot switch between headless and rendering, so all we can do is validate that we're
+        # in the correct rendering mode
+        if mode == 'human' and self.headless:
+            print("WARNING: Selenium is currently in headless mode, but the rendering mode is set to human. "
+                  "You will not see any output.")
+        elif mode is None and not self.headless:
+            print("WARNING: The rendering mode is currently set to None, but Selenium is not set to headless.")
 
     def close(self):
         pass
