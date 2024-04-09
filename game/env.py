@@ -34,7 +34,9 @@ class QWOPEnv(gymnasium.Env):
     meta_data = {'render.modes': ['human']}
     pressed_keys = set()
 
-    def __init__(self, render_mode='human'):
+    def __init__(self, render_mode='human', intermediate_rewards=True):
+        self.intermediate_rewards = intermediate_rewards
+
         # Open AI gym specifications
         super(QWOPEnv, self).__init__()
         self.action_space = spaces.Discrete(len(ACTIONS))
@@ -103,20 +105,23 @@ class QWOPEnv(gymnasium.Env):
         else:
             reward2 = 0
 
-        # Penalize for torso vertical velocity
-        reward3 = -abs(torso_y - self.previous_torso_y) / 4
+        if self.intermediate_rewards:
+            # Penalize for torso vertical velocity
+            reward3 = -abs(torso_y - self.previous_torso_y) / 4
 
-        # Penalize for bending knees too much
-        if (
-            body_state['joints']['leftKnee'] < -0.9
-            or body_state['joints']['rightKnee'] < -0.9
-        ):
-            reward4 = (
-                min(body_state['joints']['leftKnee'], body_state['joints']['rightKnee'])
-                / 6
-            )
+            # Penalize for bending knees too much
+            if (
+                body_state['joints']['leftKnee'] < -0.9
+                or body_state['joints']['rightKnee'] < -0.9
+            ):
+                reward4 = (
+                    min(body_state['joints']['leftKnee'], body_state['joints']['rightKnee'])
+                    / 6
+                )
+            else:
+                reward4 = 0
         else:
-            reward4 = 0
+            reward3 = reward4 = 0
 
         # Combine rewards
         reward = reward1 * 2 + reward2 + reward3 + reward4

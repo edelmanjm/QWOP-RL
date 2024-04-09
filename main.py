@@ -95,14 +95,14 @@ class ModelType(str, Enum):
     SAC = "sac"
 
 
-def get_env(env_type: EnvType, render_mode: RenderMode):
+def get_env(env_type: EnvType, render_mode: RenderMode, intermediate_rewards: bool = True):
     if render_mode == "none":
         # This is the way that OpenAI's Gym prefers it, and heterogenous enums don't seem to work well with Typer
         render_mode = None
 
     match env_type:
         case EnvType.QWOP:
-            env = QWOPEnv(render_mode=render_mode)  # SubprocVecEnv([lambda: QWOPEnv()])
+            env = QWOPEnv(render_mode=render_mode, intermediate_rewards=True)  # SubprocVecEnv([lambda: QWOPEnv()])
         case EnvType.WALKER_2D:
             env = gym.make('Walker2d-v4', render_mode=render_mode)
     wrapped_env = Monitor(env, TENSORBOARD_PATH, allow_early_resets=True)
@@ -162,11 +162,11 @@ def get_model(env, model_type: ModelType, model_path: str):
 
 @app.command()
 def train(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN,
-          model_type: ModelType = ModelType.DQN, model_path: str = MODEL_PATH, fine_tune=False):
+          model_type: ModelType = ModelType.DQN, model_path: str = MODEL_PATH, intermediate_rewards=True):
     """
     Run training; will train from existing model if path exists.
     """
-    env = get_env(env_type, render_mode)
+    env = get_env(env_type, render_mode, intermediate_rewards)
 
     callbacks = [
         CheckpointCallback(
