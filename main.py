@@ -7,9 +7,11 @@ import gymnasium as gym
 from stable_baselines3 import DQN, SAC
 from sb3_contrib import SACD
 from sb3_contrib.sacd.policies import SACDPolicy
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
 from stable_baselines3.common.type_aliases import TrainFreq, TrainFrequencyUnit
+from stable_baselines3.common.monitor import Monitor
 import torch
+import numpy as np
 
 from game.env import ACTIONS
 from game.env import QWOPEnv
@@ -17,7 +19,7 @@ from pretrain import imitation_learning
 from pretrain import recorder
 
 # Training parameters
-MODEL_NAME = 'sacd_test_v1'
+MODEL_NAME = 'dqn_test_v2'
 EXPLORATION_FRACTION = 0.3
 LEARNING_STARTS = 3000
 EXPLORATION_INITIAL_EPS = 0.01
@@ -29,11 +31,6 @@ LEARNING_RATE = 0.0001
 TRAIN_TIME_STEPS = 600000
 MODEL_PATH = os.path.join('models', MODEL_NAME)
 TENSORBOARD_PATH = './tensorboard/'
-
-# Checkpoint callback
-checkpoint_callback = CheckpointCallback(
-    save_freq=100000, save_path='./logs/', name_prefix=MODEL_NAME
-)
 
 # Imitation learning parameters
 RECORD_PATH = os.path.join('pretrain', 'kuro_1_to_5')
@@ -47,7 +44,7 @@ class CustomDqnPolicy(stable_baselines3.dqn.MlpPolicy):
         super(CustomDqnPolicy, self).__init__(
             *args,
             **kwargs,
-            activation_fn=torch.nn.modules.activation.ReLU, # Should be the same as default
+            activation_fn=torch.nn.modules.activation.ReLU,  # Should be the same as default
             net_arch=[256, 128],
             normalize_images=True,
         )
@@ -64,15 +61,29 @@ class CustomSacPolicy(SACDPolicy):
         )
 
 
+# From https://stable-baselines3.readthedocs.io/en/master/guide/tensorboard.html
+class TensorboardCallback(BaseCallback):
+    """
+    Custom callback for plotting additional values in tensorboard.
+    """
+
+    def __init__(self, verbose=0):
+        super().__init__(verbose)
+
+    def _on_step(self) -> bool:
+        # Log scalar value (here a random variable)
+        value = np.random.random()
+        self.logger.record("random_value", value)
+        return True
+
+
 def get_env():
-    env = QWOPEnv() # SubprocVecEnv([lambda: QWOPEnv()])
+    env = QWOPEnv()  # SubprocVecEnv([lambda: QWOPEnv()])
     # env = gym.make('Walker2d-v4')
     return env
 
 
-def get_new_model(fine_tune=False):
-    env = get_env()
-
+def get_new_model(env, fine_tune=False):
     if fine_tune:
         # Initialize env and model
         model = DQN(
@@ -97,31 +108,38 @@ def get_new_model(fine_tune=False):
         return model
 
 
-def get_existing_model(model_path, fine_tune=False):
+def get_existing_model(env, model_path, fine_tune=False):
     if fine_tune:
         model = DQN.load(model_path, tensorboard_log=TENSORBOARD_PATH)
     else:
         model = SACD.load(model_path, tensorboard_log=TENSORBOARD_PATH)
 
     # Set environment
-    model.set_env(get_env())
+    model.set_env(env)
 
     return model
 
 
-def get_model(model_path):
+def get_model(env, model_path, fine_tune=False):
     if os.path.isfile(model_path + '.zip'):
         print('--- Training from existing model', model_path, '---')
-        model = get_existing_model(model_path)
+        model = get_existing_model(env, model_path)
     else:
         print('--- Training from new model ---')
-        model = get_new_model()
+        model = get_new_model(env, fine_tune)
 
     return model
 
 
-def run_train(model_path=MODEL_PATH):
-    model = get_model(model_path)
+def run_train(env, model_path=MODEL_PATH, fine_tune=False):
+    callbacks = [
+        CheckpointCallback(
+            save_freq=1000, save_path='./logs/', name_prefix=MODEL_NAME
+        ),
+        EvalCallback(env, eval_freq=100)
+    ]
+
+    model = get_model(env, model_path, fine_tune)
     model.learning_rate = LEARNING_RATE
     model.learning_starts = LEARNING_STARTS
     model.exploration_initial_eps = EXPLORATION_INITIAL_EPS
@@ -135,7 +153,7 @@ def run_train(model_path=MODEL_PATH):
 
     model.learn(
         total_timesteps=TRAIN_TIME_STEPS,
-        callback=checkpoint_callback,
+        callback=callbacks,
         reset_num_timesteps=False,
     )
     model.save(MODEL_PATH)
@@ -162,9 +180,8 @@ def print_probs(model, obs):
     )
 
 
-def run_test(fine_tune=False):
-    # Initialize env and model
-    env = get_env()
+def run_test(env, fine_tune=False):
+    # Initialize model
     if fine_tune:
         model = DQN.load(MODEL_PATH)
     else:
@@ -200,13 +217,15 @@ def run_test(fine_tune=False):
 def main(train, test, record, imitate):
     """Train and test an agent for QWOP."""
 
+    env = QWOPEnv()
+    wrapped_env = Monitor(env, TENSORBOARD_PATH, allow_early_resets=True)
+
     if train:
-        run_train()
+        run_train(wrapped_env, fine_tune=True)
     if test:
-        run_test()
+        run_test(env, fine_tune=True)
 
     if record:
-        env = QWOPEnv()
         recorder.generate_obs(env, RECORD_PATH, N_EPISODES)
 
     if imitate:
