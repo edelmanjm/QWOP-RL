@@ -115,7 +115,7 @@ def get_env(env_type: EnvType, render_mode: RenderMode, intermediate_rewards: bo
 
     match env_type:
         case EnvType.QWOP:
-            env = QWOPEnv(render_mode=render_mode, intermediate_rewards=True)  # SubprocVecEnv([lambda: QWOPEnv()])
+            env = QWOPEnv(render_mode=render_mode, intermediate_rewards=intermediate_rewards)  # SubprocVecEnv([lambda: QWOPEnv()])
         case EnvType.WALKER_2D:
             env = gym.make('Walker2d-v4', render_mode=render_mode)
     wrapped_env = Monitor(env, TENSORBOARD_PATH, allow_early_resets=True)
