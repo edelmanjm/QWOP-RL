@@ -70,8 +70,9 @@ class QWOPEnv(gymnasium.Env):
         self.keyboard.move_to_element(window)
 
         # Click twice to get past the start screen
-        self.keyboard.click().perform()
-        self.keyboard.click().perform()
+        start = time.time()
+        while time.time() < start + 1:
+            self.keyboard.click().perform()
         self.last_press_time = time.time()
 
     def _get_variable_(self, var_name):
