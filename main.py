@@ -2,12 +2,14 @@ import os
 import stable_baselines3.common.type_aliases
 import time
 from enum import Enum
+from typing import Tuple, Type
 
 import typer
 import gymnasium as gym
 from stable_baselines3 import DQN, SAC
 from sb3_contrib import SACD
-from sb3_contrib.sacd.policies import SACDPolicy
+from sb3_contrib.sacd.policies import BasePolicy, SACDPolicy
+from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
 from stable_baselines3.common.type_aliases import TrainFreq, TrainFrequencyUnit
 from stable_baselines3.common.monitor import Monitor
@@ -95,6 +97,17 @@ class ModelType(str, Enum):
     SAC = "sac"
 
 
+def get_model_type_data(env, model_type: ModelType) -> Tuple[Type[OffPolicyAlgorithm], Type[BasePolicy]]:
+    match model_type:
+        case ModelType.DQN:
+            return DQN, CustomDqnPolicy
+        case ModelType.SAC:
+            if isinstance(env.action_space, gym.spaces.Discrete):
+                return SACD, CustomSacPolicy
+            elif isinstance(env.action_space, gym.spaces.Box):
+                return SAC, CustomSacPolicy
+
+
 def get_env(env_type: EnvType, render_mode: RenderMode, intermediate_rewards: bool = True):
     if render_mode == "none":
         # This is the way that OpenAI's Gym prefers it, and heterogenous enums don't seem to work well with Typer
@@ -110,38 +123,14 @@ def get_env(env_type: EnvType, render_mode: RenderMode, intermediate_rewards: bo
 
 
 def get_new_model(env, model_type: ModelType):
-    match model_type:
-        case ModelType.DQN:
-            return DQN(
-                CustomDqnPolicy,
-                env,
-                # TODO not implemented in stables-baselines3
-                # prioritized_replay=True,
-                verbose=1,
-                tensorboard_log=TENSORBOARD_PATH,
-            )
-        case ModelType.SAC:
-            if isinstance(env.action_space, gym.spaces.Discrete):
-                return SACD(
-                    CustomSacPolicy,
-                    env,
-                    verbose=1,
-                    tensorboard_log=TENSORBOARD_PATH,
-                )
-            elif isinstance(env.action_space, gym.spaces.Box):
-                return SAC(
-                    CustomSacPolicy,
-                    env,
-                    verbose=1,
-                    tensorboard_log=TENSORBOARD_PATH,
-                )
+    model_class, policy = get_model_type_data(env, model_type)
+    # prioritized_replay is not implemented in StableBaselines3 so this is fine
+    return model_class(policy, env, verbose=1, tensorboard_log=TENSORBOARD_PATH)
 
 
-def get_existing_model(env, model_path, fine_tune=False):
-    if fine_tune:
-        model = DQN.load(model_path, tensorboard_log=TENSORBOARD_PATH)
-    else:
-        model = SACD.load(model_path, tensorboard_log=TENSORBOARD_PATH)
+def get_existing_model(env, model_type, model_path):
+    model_class, policy = get_model_type_data(env, model_type)
+    model = model_class.load(model_path, tensorboard_log=TENSORBOARD_PATH)
 
     # Set environment
     model.set_env(env)
@@ -152,7 +141,7 @@ def get_existing_model(env, model_path, fine_tune=False):
 def get_model(env, model_type: ModelType, model_path: str):
     if os.path.isfile(model_path + '.zip'):
         print('--- Training from existing model', model_path, '---')
-        model = get_existing_model(env, model_path)
+        model = get_existing_model(env, model_type, model_path)
     else:
         print('--- Training from new model ---')
         model = get_new_model(env, model_type)
@@ -217,18 +206,16 @@ def print_probs(model, obs):
 
 
 @app.command()
-def test(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN, fine_tune=False):
+def test(env_type: EnvType = EnvType.QWOP,
+         render_mode: RenderMode = RenderMode.HUMAN,
+         model_type: ModelType = ModelType.DQN):
     """
     Test the model.
     """
 
     env = get_env(env_type, render_mode)
 
-    # Initialize model
-    if fine_tune:
-        model = DQN.load(MODEL_PATH)
-    else:
-        model = SACD.load(MODEL_PATH)
+    model = get_existing_model(env, model_type, MODEL_PATH)
 
     obs = env.reset()[0]
     done = False
