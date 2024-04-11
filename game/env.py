@@ -83,14 +83,14 @@ class QWOPEnv(gymnasium.Env):
         body_state = self._get_variable_('globalbodystate')
 
         # Get done
-        if (
-            (game_state['gameEnded'] > 0)
-            or (game_state['gameOver'] > 0)
-            or (game_state['scoreTime'] > MAX_EPISODE_DURATION_SECS)
-        ):
-            self.gameover = done = True
+        if game_state['gameEnded'] > 0 or game_state['gameOver'] > 0:
+            self.gameover = True
+            truncated = False
+        elif game_state['scoreTime'] > MAX_EPISODE_DURATION_SECS:
+            truncated = True
         else:
-            self.gameover = done = False
+            self.gameover = False
+            truncated = False
 
         # Get reward
         torso_x = body_state['torso']['position_x']
@@ -160,7 +160,7 @@ class QWOPEnv(gymnasium.Env):
             state = state + list(part.values())
         state = np.array(state)
 
-        return state, reward, self.gameover, False, {}
+        return state, reward, self.gameover, truncated, {}
 
     def _release_all_keys_(self):
 
