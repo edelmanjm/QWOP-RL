@@ -78,6 +78,7 @@ class QWOPEnv(gymnasium.Env):
         return self.driver.execute_script(f'return {var_name};')
 
     def _get_state_(self):
+        # Since the framerate may or may not be consistent
 
         game_state = self._get_variable_('globalgamestate')
         body_state = self._get_variable_('globalbodystate')
@@ -96,35 +97,45 @@ class QWOPEnv(gymnasium.Env):
         torso_x = body_state['torso']['position_x']
         torso_y = body_state['torso']['position_y']
 
+        # Get time
+        time = game_state['scoreTime']
+        # Prevents divide by zero. In practice, this only happens if the game gets paused for some reason (usually
+        # going out of focus when rendering with human rendering), but it's worth having to keep from crashing anyways
+        dt = max(time - self.previous_time, 1 / 60)
+
         # Reward for moving forward
-        reward1 = max(torso_x - self.previous_torso_x, 0)
+        x_movement = torso_x - self.previous_torso_x
+        x_velocity = x_movement / dt
+
+        reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
+        reward_velocity = x_velocity
 
         # Penalize for low torso
         if torso_y > 0:
-            reward2 = -torso_y / 5
+            penalty_low = -torso_y / 5
         else:
-            reward2 = 0
+            penalty_low = 0
 
         if self.intermediate_rewards:
             # Penalize for torso vertical velocity
-            reward3 = -abs(torso_y - self.previous_torso_y) / 4
+            penalty_falling = -abs(torso_y - self.previous_torso_y) / 4
 
             # Penalize for bending knees too much
             if (
                 body_state['joints']['leftKnee'] < -0.9
                 or body_state['joints']['rightKnee'] < -0.9
             ):
-                reward4 = (
+                penalty_bending = (
                     min(body_state['joints']['leftKnee'], body_state['joints']['rightKnee'])
                     / 6
                 )
             else:
-                reward4 = 0
+                penalty_bending = 0
         else:
-            reward3 = reward4 = 0
+            penalty_falling = penalty_bending = 0
 
         # Combine rewards
-        reward = reward1 * 2 + reward2 + reward3 + reward4
+        reward = reward_forward + reward_velocity + penalty_low + penalty_falling + penalty_bending
 
         # print(
         #     'Rewards: {:3.1f}, {:3.1f}, {:3.1f}, {:3.1f}, {:3.1f}'.format(
@@ -136,7 +147,7 @@ class QWOPEnv(gymnasium.Env):
         self.previous_torso_x = torso_x
         self.previous_torso_y = torso_y
         self.previous_score = game_state['score']
-        self.previous_time = game_state['scoreTime']
+        self.previous_time = time
 
         # Normalize torso_x
         for part, values in body_state.items():
