@@ -34,8 +34,9 @@ class QWOPEnv(gymnasium.Env):
     meta_data = {'render.modes': ['human']}
     pressed_keys = set()
 
-    def __init__(self, render_mode='human', intermediate_rewards=True):
+    def __init__(self, render_mode='human', intermediate_rewards=True, fine_tune=False):
         self.intermediate_rewards = intermediate_rewards
+        self.fine_tune = fine_tune
 
         # Open AI gym specifications
         super(QWOPEnv, self).__init__()
@@ -95,10 +96,12 @@ class QWOPEnv(gymnasium.Env):
             truncated = False
 
         # Get reward
+
+        # Position is measured in decimeters, amusingly
         torso_x = body_state['torso']['position_x']
         torso_y = body_state['torso']['position_y']
 
-        # Get time
+        # Time is measured in seconds
         time = game_state['scoreTime']
         # Prevents divide by zero. In practice, this only happens if the game gets paused for some reason (usually
         # going out of focus when rendering with human rendering), but it's worth having to keep from crashing anyways
@@ -108,35 +111,49 @@ class QWOPEnv(gymnasium.Env):
         x_movement = torso_x - self.previous_torso_x
         x_velocity = x_movement / dt
 
-        reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
-        reward_velocity = x_velocity
+        if self.fine_tune:
+            reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
+            reward_velocity = x_velocity * 10
 
-        # Penalize for low torso
-        if torso_y > 0:
-            penalty_low = -torso_y / 5
-        else:
-            penalty_low = 0
-
-        if self.intermediate_rewards:
-            # Penalize for torso vertical velocity
-            penalty_falling = -abs(torso_y - self.previous_torso_y) / 4
-
-            # Penalize for bending knees too much
-            if (
-                body_state['joints']['leftKnee'] < -0.9
-                or body_state['joints']['rightKnee'] < -0.9
-            ):
-                penalty_bending = (
-                    min(body_state['joints']['leftKnee'], body_state['joints']['rightKnee'])
-                    / 6
-                )
+            # Boost the terminal state based on total time to complete the run and the jump distance
+            if self.gameover and not truncated:
+                reward_overall_velocity = 5000 / time
+                reward_jump = (torso_x - 1000) * 100
+                reward_terminal = reward_overall_velocity + reward_jump
             else:
-                penalty_bending = 0
-        else:
-            penalty_falling = penalty_bending = 0
+                reward_terminal = 0
 
-        # Combine rewards
-        reward = reward_forward + reward_velocity + penalty_low + penalty_falling + penalty_bending
+            reward = reward_forward + reward_velocity + reward_terminal
+        else:
+            reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
+            reward_velocity = x_velocity
+
+            # Penalize for low torso
+            if torso_y > 0:
+                penalty_low = -torso_y / 5
+            else:
+                penalty_low = 0
+
+            if self.intermediate_rewards:
+                # Penalize for torso vertical velocity
+                penalty_falling = -abs(torso_y - self.previous_torso_y) / 4
+
+                # Penalize for bending knees too much
+                if (
+                    body_state['joints']['leftKnee'] < -0.9
+                    or body_state['joints']['rightKnee'] < -0.9
+                ):
+                    penalty_bending = (
+                        min(body_state['joints']['leftKnee'], body_state['joints']['rightKnee'])
+                        / 6
+                    )
+                else:
+                    penalty_bending = 0
+            else:
+                penalty_falling = penalty_bending = 0
+
+            # Combine rewards
+            reward = reward_forward + reward_velocity + penalty_low + penalty_falling + penalty_bending
 
         # print(
         #     'Rewards: {:3.1f}, {:3.1f}, {:3.1f}, {:3.1f}, {:3.1f}'.format(

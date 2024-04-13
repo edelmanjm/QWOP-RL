@@ -22,7 +22,8 @@ from pretrain import imitation_learning
 from pretrain import recorder
 
 # Training parameters
-MODEL_NAME = 'dqn_test_v2'
+DEFAULT_MODEL_NAME = 'my_model'
+DEFAULT_MODEL_PATH = os.path.join('models', DEFAULT_MODEL_NAME)
 EXPLORATION_FRACTION = 0.3
 LEARNING_STARTS = 3000
 EXPLORATION_INITIAL_EPS = 0.01
@@ -32,7 +33,6 @@ BATCH_SIZE = 64
 TRAIN_FREQ = TrainFreq(frequency=4, unit=TrainFrequencyUnit.STEP)
 LEARNING_RATE = 0.0001
 TRAIN_TIME_STEPS = 600000
-MODEL_PATH = os.path.join('models', MODEL_NAME)
 TENSORBOARD_PATH = './tensorboard/'
 
 # Imitation learning parameters
@@ -108,14 +108,14 @@ def get_model_type_data(env, model_type: ModelType) -> Tuple[Type[OffPolicyAlgor
                 return SAC, CustomSacPolicy
 
 
-def get_env(env_type: EnvType, render_mode: RenderMode, intermediate_rewards: bool = True):
+def get_env(env_type: EnvType, render_mode: RenderMode, fine_tune: bool = False, intermediate_rewards: bool = True):
     if render_mode == "none":
         # This is the way that OpenAI's Gym prefers it, and heterogenous enums don't seem to work well with Typer
         render_mode = None
 
     match env_type:
         case EnvType.QWOP:
-            env = QWOPEnv(render_mode=render_mode, intermediate_rewards=intermediate_rewards)  # SubprocVecEnv([lambda: QWOPEnv()])
+            env = QWOPEnv(render_mode=render_mode, fine_tune=fine_tune, intermediate_rewards=intermediate_rewards)
         case EnvType.WALKER_2D:
             env = gym.make('Walker2d-v4', render_mode=render_mode)
     wrapped_env = Monitor(env, TENSORBOARD_PATH, allow_early_resets=True)
@@ -138,8 +138,9 @@ def get_existing_model(env, model_type, model_path):
     return model
 
 
-def get_model(env, model_type: ModelType, model_path: str):
-    if os.path.isfile(model_path + '.zip'):
+def get_model(env, model_type: ModelType, model_path: str | None):
+    print(model_path)
+    if model_path is not None and os.path.isfile(model_path + '.zip'):
         print('--- Training from existing model', model_path, '---')
         model = get_existing_model(env, model_type, model_path)
     else:
@@ -151,20 +152,22 @@ def get_model(env, model_type: ModelType, model_path: str):
 
 @app.command()
 def train(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN,
-          model_type: ModelType = ModelType.DQN, model_path: str = MODEL_PATH, intermediate_rewards=True):
+          model_type: ModelType = ModelType.DQN, load_model_path: str = DEFAULT_MODEL_PATH,
+          save_model_path: str = DEFAULT_MODEL_PATH, fine_tune=False,
+          intermediate_rewards=True):
     """
     Run training; will train from existing model if path exists.
     """
-    env = get_env(env_type, render_mode, intermediate_rewards)
+    env = get_env(env_type, render_mode, fine_tune, intermediate_rewards)
 
     callbacks = [
         CheckpointCallback(
-            save_freq=1000, save_path='./logs/', name_prefix=MODEL_NAME
+            save_freq=1000, save_path='./logs/', name_prefix=save_model_path
         ),
         EvalCallback(env, eval_freq=100)
     ]
 
-    model = get_model(env, model_type, model_path)
+    model = get_model(env, model_type, load_model_path)
     model.learning_rate = LEARNING_RATE
     model.learning_starts = LEARNING_STARTS
     model.exploration_initial_eps = EXPLORATION_INITIAL_EPS
@@ -181,7 +184,7 @@ def train(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode
         callback=callbacks,
         reset_num_timesteps=False,
     )
-    model.save(MODEL_PATH)
+    model.save(save_model_path)
 
     print(f"Trained {TRAIN_TIME_STEPS} steps in {time.time() - t} seconds.")
 
@@ -235,14 +238,15 @@ def record(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMod
 
 @app.command()
 def imitate(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN,
-            model_type: ModelType = ModelType.DQN):
+            model_type: ModelType = ModelType.DQN, load_model_path=DEFAULT_MODEL_PATH,
+            save_model_path=DEFAULT_MODEL_PATH):
     """
     Train agent from recordings; will use existing model if path exists
     """
     env = get_env(env_type, render_mode)
-    model = get_model(env, model_type, MODEL_PATH)
+    model = get_model(env, model_type, load_model_path)
     imitation_learning.imitate(
-        model, RECORD_PATH, MODEL_PATH, PRETRAIN_LEARNING_RATE, N_EPOCHS
+        model, RECORD_PATH, save_model_path, PRETRAIN_LEARNING_RATE, N_EPOCHS
     )
 
 
