@@ -117,7 +117,7 @@ class QWOPEnv(gymnasium.Env):
 
         if self.fine_tune:
             reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
-            reward_velocity = x_velocity * 10
+            reward_velocity = x_velocity * 3
 
             # # Boost the terminal state based on total time to complete the run and the jump distance
             # if self.gameover and not truncated:
@@ -131,7 +131,7 @@ class QWOPEnv(gymnasium.Env):
             reward = reward_forward + reward_velocity + reward_terminal
         else:
             reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
-            reward_velocity = x_velocity
+            reward_velocity = x_velocity * 4
 
             # Penalize for low torso
             if torso_y > 0:
