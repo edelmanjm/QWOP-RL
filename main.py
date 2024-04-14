@@ -211,14 +211,15 @@ def print_probs(model, obs):
 @app.command()
 def test(env_type: EnvType = EnvType.QWOP,
          render_mode: RenderMode = RenderMode.HUMAN,
-         model_type: ModelType = ModelType.DQN):
+         model_type: ModelType = ModelType.DQN,
+         load_model_path=DEFAULT_MODEL_PATH):
     """
     Test the model.
     """
 
     env = get_env(env_type, render_mode)
 
-    model = get_existing_model(env, model_type, MODEL_PATH)
+    model = get_existing_model(env, model_type, load_model_path)
 
     obs = env.reset()[0]
     done = False
