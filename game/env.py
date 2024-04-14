@@ -119,13 +119,14 @@ class QWOPEnv(gymnasium.Env):
             reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
             reward_velocity = x_velocity * 10
 
-            # Boost the terminal state based on total time to complete the run and the jump distance
-            if self.gameover and not truncated:
-                reward_overall_velocity = 5000 / time
-                reward_jump = (torso_x - 1000) * 100
-                reward_terminal = reward_overall_velocity + reward_jump
-            else:
-                reward_terminal = 0
+            # # Boost the terminal state based on total time to complete the run and the jump distance
+            # if self.gameover and not truncated:
+            #     reward_overall_velocity = 5000 / time
+            #     reward_jump = (torso_x - 1000) * 100
+            #     reward_terminal = reward_overall_velocity + reward_jump
+            # else:
+            #     reward_terminal = 0
+            reward_terminal = 0
 
             reward = reward_forward + reward_velocity + reward_terminal
         else:
