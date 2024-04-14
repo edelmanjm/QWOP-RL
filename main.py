@@ -36,7 +36,7 @@ TRAIN_TIME_STEPS = 600000
 TENSORBOARD_PATH = './tensorboard/'
 
 # Imitation learning parameters
-RECORD_PATH = os.path.join('pretrain', 'kuro_1_to_5')
+EXPERT_PATH = os.path.join('pretrain', 'kuro_1_to_5.npz')
 N_EPISODES = 10
 N_EPOCHS = 500
 PRETRAIN_LEARNING_RATE = 0.00001  # 0.0001
@@ -229,26 +229,45 @@ def test(env_type: EnvType = EnvType.QWOP,
 
 
 @app.command()
-def record(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN):
+def record(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN, record_path=EXPERT_PATH):
     """
     Record observations for pretraining
     """
     env = get_env(env_type, render_mode)
-    recorder.generate_obs(env, RECORD_PATH, N_EPISODES)
+    recorder.generate_obs(env, record_path, N_EPISODES)
 
 
 @app.command()
 def imitate(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN,
             model_type: ModelType = ModelType.DQN, load_model_path=DEFAULT_MODEL_PATH,
-            save_model_path=DEFAULT_MODEL_PATH):
+            save_model_path=DEFAULT_MODEL_PATH, expert_path=EXPERT_PATH):
     """
     Train agent from recordings; will use existing model if path exists
     """
     env = get_env(env_type, render_mode)
     model = get_model(env, model_type, load_model_path)
-    imitation_learning.imitate(
-        model, RECORD_PATH, save_model_path, PRETRAIN_LEARNING_RATE, N_EPOCHS
+    imitation_learning.configure_imitation(
+        model, env, expert_path, save_model_path, PRETRAIN_LEARNING_RATE, N_EPOCHS
     )
+
+    callbacks = [
+        CheckpointCallback(
+            save_freq=1000, save_path='./logs/', name_prefix=save_model_path
+        ),
+        EvalCallback(env, eval_freq=100)
+    ]
+
+    # Train and save
+    t = time.time()
+
+    model.learn(
+        total_timesteps=TRAIN_TIME_STEPS,
+        callback=callbacks,
+        reset_num_timesteps=False,
+    )
+    model.save(save_model_path)
+
+    print(f"Imitated {TRAIN_TIME_STEPS} steps in {time.time() - t} seconds.")
 
 
 if __name__ == '__main__':

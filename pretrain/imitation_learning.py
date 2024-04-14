@@ -1,12 +1,16 @@
 from typing import List, Tuple
 
+import gym
 import numpy as np
 from stable_baselines3.common.buffers import ReplayBuffer
 
 
 class ReplayBufferWithDemonstrations(ReplayBuffer):
-    def __init__(self, expert_demonstrations, *args, **kwargs):
-        super(ReplayBufferWithDemonstrations, self).__init__(*args, **kwargs)
+    def __init__(self, env: gym.Env, buffer_size: int, expert_demonstrations):
+        super(ReplayBufferWithDemonstrations, self).__init__(buffer_size,
+                                                             observation_space=env.observation_space,
+                                                             action_space=env.action_space)
+        self.handle_timeout_termination = False
         # Add expert demonstrations to the replay buffer
         self.add_expert_demonstrations(expert_demonstrations)
 
@@ -50,20 +54,15 @@ def parse_old_expert_data(expert_data_path: str) \
     return expert_demonstrations
 
 
-def imitate(model, expert_path, model_path, learning_rate, n_epochs=1000):
-
-    # TODO I think this and the recorder need to be entirely rewritten
-    # See https://github.com/HumanCompatibleAI/imitation/blob/a8b079c469bb145d1954814f22488adff944aa0d/docs/tutorials/3_train_gail.ipynb#L7
-
+def configure_imitation(model, env, expert_path, model_path, learning_rate, n_epochs=1000):
     expert_demonstrations = parse_old_expert_data(expert_path)
     # Fill the replay buffer with expert demonstrations. Kinda a hacky way to learn from expert demonstrations that
     # doesn't have a ton of theoretical basis, but it's how the code originally did this and seems to work in practice
-    replay_buffer = ReplayBufferWithDemonstrations(expert_demonstrations, buffer_size=len(expert_demonstrations))
+    replay_buffer = ReplayBufferWithDemonstrations(env, len(expert_demonstrations) * 2, expert_demonstrations)
 
     # Set the replay buffer for the model
-    model.load_replay_buffer(replay_buffer)
+    model.replay_buffer = replay_buffer
 
-    # TODO validate that we train on the replay buffer
-    model.pretrain(replay_buffer, n_epochs=n_epochs, learning_rate=learning_rate)
-
-    model.save(model_path)
+    # TODO maybe replace pretraining with some other form of behavioral cloning?
+    #  https://github.com/DLR-RM/stable-baselines3/issues/27
+    # model.pretrain(n_epochs=n_epochs, learning_rate=learning_rate)
