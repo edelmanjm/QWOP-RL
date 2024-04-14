@@ -57,7 +57,10 @@ class QWOPEnv(gymnasium.Env):
         # Open browser and go to QWOP page
         options = Options()
         if render_mode is None:
+            self.headless = True
             options.add_argument('--headless=new')
+        else:
+            self.headless = False
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         self.driver = webdriver.Chrome(options=options)
