@@ -90,6 +90,7 @@ class QWOPEnv(gymnasium.Env):
             self.gameover = True
             truncated = False
         elif game_state['scoreTime'] > MAX_EPISODE_DURATION_SECS:
+            self.gameover = True
             truncated = True
         else:
             self.gameover = False
