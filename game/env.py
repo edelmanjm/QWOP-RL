@@ -102,8 +102,9 @@ class QWOPEnv(gymnasium.Env):
         # Get reward
 
         # Position is measured in decimeters, amusingly
-        torso_x = body_state['torso']['position_x']
-        torso_y = body_state['torso']['position_y']
+        torso_position_x = body_state['torso']['position_x']
+        torso_position_y = body_state['torso']['position_y']
+        torso_velocity_x = body_state['torso']['linear_velocity_x']
 
         # Time is measured in seconds
         time = game_state['scoreTime']
@@ -112,12 +113,11 @@ class QWOPEnv(gymnasium.Env):
         dt = max(time - self.previous_time, 1 / 60)
 
         # Reward for moving forward
-        x_movement = torso_x - self.previous_torso_x
-        x_velocity = x_movement / dt
+        x_movement = torso_position_x - self.previous_torso_x
 
         if self.fine_tune:
-            reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
-            reward_velocity = x_velocity * 1
+            reward_forward = max(torso_position_x - self.previous_torso_x, 0) * 2
+            reward_velocity = torso_velocity_x / 10
 
             # # Boost the terminal state based on total time to complete the run and the jump distance
             # if self.gameover and not truncated:
@@ -130,18 +130,19 @@ class QWOPEnv(gymnasium.Env):
 
             reward = reward_forward + reward_velocity + reward_terminal
         else:
-            reward_forward = max(torso_x - self.previous_torso_x, 0) * 2
-            reward_velocity = x_velocity * 2
+            reward_forward = max(x_movement, 0) * 2
+            reward_velocity = torso_velocity_x / 10
+            print(reward_forward, reward_velocity)
 
             # Penalize for low torso
-            if torso_y > 0:
-                penalty_low = -torso_y / 5
+            if torso_position_y > 0:
+                penalty_low = -torso_position_y / 5
             else:
                 penalty_low = 0
 
             if self.intermediate_rewards:
                 # Penalize for torso vertical velocity
-                penalty_falling = -abs(torso_y - self.previous_torso_y) / 4
+                penalty_falling = -abs(torso_position_y - self.previous_torso_y) / 4
 
                 # Penalize for bending knees too much
                 if (
@@ -167,15 +168,15 @@ class QWOPEnv(gymnasium.Env):
         # )
 
         # Update previous scores
-        self.previous_torso_x = torso_x
-        self.previous_torso_y = torso_y
+        self.previous_torso_x = torso_position_x
+        self.previous_torso_y = torso_position_y
         self.previous_score = game_state['score']
         self.previous_time = time
 
         # Normalize torso_x
         for part, values in body_state.items():
             if 'position_x' in values:
-                values['position_x'] -= torso_x
+                values['position_x'] -= torso_position_x
 
         # print('Positions: {:3.1f}, {:3.1f}, {:3.1f}'.format(
         #     body_state['torso']['position_x'],
