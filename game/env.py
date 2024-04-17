@@ -132,7 +132,6 @@ class QWOPEnv(gymnasium.Env):
         else:
             reward_forward = max(x_movement, 0) * 2
             reward_velocity = torso_velocity_x / 10
-            print(reward_forward, reward_velocity)
 
             # Penalize for low torso
             if torso_position_y > 0:
