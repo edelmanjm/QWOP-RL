@@ -240,7 +240,7 @@ def record(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMod
 @app.command()
 def imitate(env_type: EnvType = EnvType.QWOP, render_mode: RenderMode = RenderMode.HUMAN,
             model_type: ModelType = ModelType.DQN, load_model_path=DEFAULT_MODEL_PATH,
-            save_model_path=DEFAULT_MODEL_PATH, expert_path=EXPERT_PATH):
+            save_model_path=DEFAULT_MODEL_PATH, expert_path=EXPERT_PATH, fine_tune=False, intermediate_rewards=True):
     """
     Train agent from recordings; will use existing model if path exists
     """
